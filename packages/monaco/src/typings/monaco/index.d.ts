@@ -1054,16 +1054,20 @@ declare module monaco.filters {
 
 declare module monaco.editorExtensions {
 
+    // https://github.com/theia-ide/vscode/blob/d24b5f70c69b3e75cd10c6b5247a071265ccdd38/src/vs/editor/browser/editorExtensions.ts#L141
+    export abstract class EditorCommand {
+    }
+
     // https://github.com/theia-ide/vscode/blob/standalone/0.19.x/src/vs/editor/browser/editorExtensions.ts#L205
-    export interface EditorAction {
+    export abstract class EditorAction extends EditorCommand {
         id: string;
         label: string;
-        alias: string;
     }
 
     export module EditorExtensionsRegistry {
         // https://github.com/theia-ide/vscode/blob/standalone/0.19.x/src/vs/editor/browser/editorExtensions.ts#L341
         export function getEditorActions(): EditorAction[];
+        export function getEditorCommand(commandId: string): EditorCommand | undefined;
     }
 }
 declare module monaco.modes {

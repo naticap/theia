@@ -21,7 +21,7 @@ import { DiffUris } from '@theia/core/lib/browser/diff-uris';
 import { inject, injectable } from 'inversify';
 import { DisposableCollection, deepClone, Disposable, } from '@theia/core/lib/common';
 import { MonacoToProtocolConverter, ProtocolToMonacoConverter, TextDocumentSaveReason } from 'monaco-languageclient';
-import { MonacoCommandServiceFactory } from './monaco-command-service';
+import { MonacoCommandServiceFactory, MonacoCommandService } from './monaco-command-service';
 import { MonacoContextMenuService } from './monaco-context-menu';
 import { MonacoDiffEditor } from './monaco-diff-editor';
 import { MonacoDiffNavigatorFactory } from './monaco-diff-navigator-factory';
@@ -32,12 +32,19 @@ import { MonacoQuickOpenService } from './monaco-quick-open-service';
 import { MonacoTextModelService } from './monaco-text-model-service';
 import { MonacoWorkspace } from './monaco-workspace';
 import { MonacoBulkEditService } from './monaco-bulk-edit-service';
-
-import IEditorOverrideServices = monaco.editor.IEditorOverrideServices;
 import { ApplicationServer } from '@theia/core/lib/common/application-protocol';
 import { OS } from '@theia/core';
 import { KeybindingRegistry } from '@theia/core/lib/browser';
 import { MonacoResolvedKeybinding } from './monaco-resolved-keybinding';
+
+import IEditorOverrideServices = monaco.editor.IEditorOverrideServices;
+export interface MonacoEditorOverrideServices extends IEditorOverrideServices {
+    codeEditorService: MonacoEditorService
+    textModelService: MonacoTextModelService
+    contextMenuService: MonacoContextMenuService
+    commandService: MonacoCommandService
+    IWorkspaceEditService: MonacoBulkEditService
+}
 
 @injectable()
 export class MonacoEditorProvider {
@@ -118,27 +125,32 @@ export class MonacoEditorProvider {
         return this.doCreateEditor((override, toDispose) => this.createEditor(uri, override, toDispose));
     }
 
-    protected async doCreateEditor(factory: (override: IEditorOverrideServices, toDispose: DisposableCollection) => Promise<MonacoEditor>): Promise<MonacoEditor> {
+    createEditorOverrideServices(): MonacoEditorOverrideServices {
         const commandService = this.commandServiceFactory();
         const contextKeyService = this.contextKeyService.createScoped();
         const { codeEditorService, textModelService, contextMenuService } = this;
         const IWorkspaceEditService = this.bulkEditService;
-        const toDispose = new DisposableCollection(commandService);
-        const editor = await factory({
+        return {
             codeEditorService,
             textModelService,
             contextMenuService,
             commandService,
             IWorkspaceEditService,
             contextKeyService
-        }, toDispose);
+        };
+    }
+
+    protected async doCreateEditor(factory: (override: IEditorOverrideServices, toDispose: DisposableCollection) => Promise<MonacoEditor>): Promise<MonacoEditor> {
+        const overrideServices = this.createEditorOverrideServices();
+        const toDispose = new DisposableCollection(overrideServices.commandService);
+        const editor = await factory(overrideServices, toDispose);
         editor.onDispose(() => toDispose.dispose());
 
         this.suppressMonacoKeybindingListener(editor);
         this.injectKeybindingResolver(editor);
 
         const standaloneCommandService = new monaco.services.StandaloneCommandService(editor.instantiationService);
-        commandService.setDelegate(standaloneCommandService);
+        overrideServices.commandService.setDelegate(standaloneCommandService);
         toDispose.push(this.installQuickOpenService(editor));
         toDispose.push(this.installReferencesController(editor));
 
